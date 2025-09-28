@@ -1,0 +1,406 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enums
+enum UserLevel {
+  bronze
+  silver
+  gold
+  premium
+}
+
+enum UserRole {
+  user
+  moderator
+  admin
+  super_admin
+}
+
+enum TaskType {
+  subscribe
+  join_group
+  view_post
+  react_post
+  use_bot
+  premium_boost
+}
+
+enum TaskStatus {
+  draft
+  active
+  paused
+  completed
+  cancelled
+  expired
+}
+
+enum ExecutionStatus {
+  pending
+  approved
+  rejected
+  expired
+}
+
+enum VerificationType {
+  auto
+  manual
+  hybrid
+}
+
+enum CheckType {
+  public_channel
+  private_channel
+  invite_link
+  referral_bot
+}
+
+enum TransactionType {
+  earn
+  spend
+  referral
+  bonus
+  refund
+  penalty
+}
+
+enum NotificationType {
+  task_completed
+  task_approved
+  task_rejected
+  referral_bonus
+  level_up
+  balance_low
+  system_message
+}
+
+enum LanguageCode {
+  ru
+  en
+  es
+  de
+  fr
+}
+
+// Users table
+model User {
+  id                String    @id @default(cuid())
+  telegramId        BigInt    @unique @map("telegram_id")
+  username          String?
+  firstName         String?   @map("first_name")
+  lastName          String?   @map("last_name")
+  languageCode      LanguageCode @default(ru) @map("language_code")
+  balance           Decimal   @default(0) @db.Decimal(15, 2)
+  frozenBalance     Decimal   @default(0) @map("frozen_balance") @db.Decimal(15, 2)
+  level             UserLevel @default(bronze)
+  role              UserRole  @default(user)
+  referrerId        BigInt?   @map("referrer_id")
+  referralCode      String    @unique @map("referral_code")
+  totalEarned       Decimal   @default(0) @map("total_earned") @db.Decimal(15, 2)
+  totalSpent        Decimal   @default(0) @map("total_spent") @db.Decimal(15, 2)
+  tasksCompleted    Int       @default(0) @map("tasks_completed")
+  tasksCreated      Int       @default(0) @map("tasks_created")
+  isPremium         Boolean   @default(false) @map("is_premium")
+  premiumUntil      DateTime? @map("premium_until") @db.Timestamptz
+  settings          Json      @default("{}")
+  metadata          Json      @default("{}")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  
+  // Relations
+  referrer          User?     @relation("UserReferrals", fields: [referrerId], references: [telegramId])
+  referrals         User[]    @relation("UserReferrals")
+  
+  // Tasks
+  createdTasks      Task[]    @relation("TaskAuthor")
+  taskExecutions    TaskExecution[]
+  
+  // Checks
+  createdChecks     Check[]   @relation("CheckCreator")
+  checkActivations  CheckActivation[]
+  
+  // Subscription Checks
+  subscriptionChecks SubscriptionCheck[]
+  
+  // Transactions
+  transactions      Transaction[]
+  
+  // Notifications
+  notifications     Notification[]
+  
+  // Activities
+  activities        UserActivity[]
+
+  @@index([telegramId])
+  @@index([referrerId])
+  @@index([level])
+  @@index([isPremium])
+  @@index([createdAt])
+  @@map("users")
+}
+
+// Tasks table
+model Task {
+  id                  String          @id @default(cuid())
+  uuid                String          @unique @default(uuid())
+  authorId            BigInt          @map("author_id")
+  type                TaskType
+  title               String
+  description         String
+  reward              Decimal         @db.Decimal(10, 2)
+  targetCount         Int             @map("target_count")
+  completedCount      Int             @default(0) @map("completed_count")
+  targetUrl           String?         @map("target_url") @db.VarChar(1000)
+  targetChatId        BigInt?         @map("target_chat_id")
+  conditions          Json            @default("{}")
+  verificationType    VerificationType @default(auto) @map("verification_type")
+  status              TaskStatus      @default(active)
+  priority            Int             @default(0)
+  boostConfig         Json            @default("{}") @map("boost_config")
+  isBoosted           Boolean         @default(false) @map("is_boosted")
+  boostExpiresAt      DateTime?       @map("boost_expires_at") @db.Timestamptz
+  autoApproveHours    Int             @default(24) @map("auto_approve_hours")
+  minUserLevel        UserLevel       @default(bronze) @map("min_user_level")
+  geographicalRestrictions Json       @default("{}") @map("geographical_restrictions")
+  expiresAt           DateTime?       @map("expires_at") @db.Timestamptz
+  createdAt           DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+  
+  // Relations
+  author              User            @relation("TaskAuthor", fields: [authorId], references: [telegramId])
+  executions          TaskExecution[]
+  
+  @@index([authorId])
+  @@index([type])
+  @@index([status])
+  @@index([isBoosted])
+  @@index([createdAt])
+  @@index([expiresAt])
+  @@map("tasks")
+}
+
+// Task Executions table
+model TaskExecution {
+  id              String          @id @default(cuid())
+  uuid            String          @unique @default(uuid())
+  taskId          String          @map("task_id")
+  userId          BigInt          @map("user_id")
+  status          ExecutionStatus @default(pending)
+  screenshotUrls  String[]        @map("screenshot_urls")
+  proofData       Json            @default("{}") @map("proof_data")
+  adminComment    String?         @map("admin_comment")
+  autoApproved    Boolean         @default(false) @map("auto_approved")
+  verifiedAt      DateTime?       @map("verified_at") @db.Timestamptz
+  verifiedBy      BigInt?         @map("verified_by")
+  rewardAmount    Decimal         @map("reward_amount") @db.Decimal(10, 2)
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+  
+  // Relations
+  task            Task            @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user            User            @relation(fields: [userId], references: [telegramId])
+  
+  @@unique([taskId, userId])
+  @@index([taskId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("task_executions")
+}
+
+// Checks table
+model Check {
+  id                String            @id @default(cuid())
+  uuid              String            @unique @default(uuid())
+  createdBy         BigInt            @map("created_by")
+  amount            Decimal           @db.Decimal(10, 2)
+  maxActivations    Int               @map("max_activations")
+  currentActivations Int              @default(0) @map("current_activations")
+  password          String?
+  comment           String?
+  imageUrl          String?           @map("image_url")
+  conditions        Json              @default("{}")
+  design            Json              @default("{}")
+  isActive          Boolean           @default(true) @map("is_active")
+  expiresAt         DateTime?         @map("expires_at") @db.Timestamptz
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+  
+  // Relations
+  creator           User              @relation("CheckCreator", fields: [createdBy], references: [telegramId])
+  activations       CheckActivation[]
+  
+  @@index([createdBy])
+  @@index([isActive])
+  @@index([createdAt])
+  @@index([expiresAt])
+  @@map("checks")
+}
+
+// Check Activations table
+model CheckActivation {
+  id          String    @id @default(cuid())
+  checkId     String    @map("check_id")
+  userId      BigInt    @map("user_id")
+  amount      Decimal   @db.Decimal(10, 2)
+  ipAddress   String?   @map("ip_address")
+  userAgent   String?   @map("user_agent")
+  location    Json?
+  metadata    Json      @default("{}")
+  activatedAt DateTime  @default(now()) @map("activated_at") @db.Timestamptz
+  
+  // Relations
+  check       Check     @relation(fields: [checkId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [telegramId])
+  
+  @@index([checkId])
+  @@index([userId])
+  @@index([activatedAt])
+  @@map("check_activations")
+}
+
+// Subscription Checks table
+model SubscriptionCheck {
+  id                  String    @id @default(cuid())
+  uuid                String    @unique @default(uuid())
+  chatId              BigInt    @map("chat_id")
+  chatTitle           String?   @map("chat_title")
+  targetChatId        BigInt?   @map("target_chat_id")
+  targetUsername      String?   @map("target_username")
+  targetTitle         String?   @map("target_title")
+  inviteLink          String?   @map("invite_link") @db.VarChar(1000)
+  setupType           CheckType @map("setup_type")
+  isActive            Boolean   @default(true) @map("is_active")
+  autoDeleteTimer     Int?      @map("auto_delete_timer")
+  expiresAt           DateTime? @map("expires_at") @db.Timestamptz
+  subscriberGoal      Int?      @map("subscriber_goal")
+  currentSubscribers  Int       @default(0) @map("current_subscribers")
+  createdBy           BigInt    @map("created_by")
+  settings            Json      @default("{}")
+  statistics          Json      @default("{}")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  
+  // Relations
+  creator             User      @relation(fields: [createdBy], references: [telegramId])
+  
+  @@index([chatId])
+  @@index([createdBy])
+  @@index([isActive])
+  @@index([setupType])
+  @@index([createdAt])
+  @@map("subscription_checks")
+}
+
+// Transactions table
+model Transaction {
+  id          String          @id @default(cuid())
+  userId      BigInt          @map("user_id")
+  type        TransactionType
+  amount      Decimal         @db.Decimal(15, 2)
+  description String
+  metadata    Json            @default("{}")
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  
+  // Relations
+  user        User            @relation(fields: [userId], references: [telegramId])
+  
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("transactions")
+}
+
+// Notifications table
+model Notification {
+  id        String            @id @default(cuid())
+  userId    BigInt            @map("user_id")
+  type      NotificationType
+  title     String
+  message   String
+  data      Json              @default("{}")
+  isRead    Boolean           @default(false) @map("is_read")
+  createdAt DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  readAt    DateTime?         @map("read_at") @db.Timestamptz
+  
+  // Relations
+  user      User              @relation(fields: [userId], references: [telegramId])
+  
+  @@index([userId])
+  @@index([type])
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// User Activities table
+model UserActivity {
+  id          String    @id @default(cuid())
+  userId      BigInt    @map("user_id")
+  type        String
+  description String
+  metadata    Json      @default("{}")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  
+  // Relations
+  user        User      @relation(fields: [userId], references: [telegramId])
+  
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("user_activities")
+}
+
+// File Uploads table
+model FileUpload {
+  id           String    @id @default(cuid())
+  filename     String
+  originalName String    @map("original_name")
+  mimeType     String    @map("mime_type")
+  size         Int
+  url          String
+  thumbnailUrl String?   @map("thumbnail_url")
+  uploadedBy   BigInt    @map("uploaded_by")
+  metadata     Json      @default("{}")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  
+  @@index([uploadedBy])
+  @@index([createdAt])
+  @@map("file_uploads")
+}
+
+// System Settings table
+model SystemSetting {
+  id        String    @id @default(cuid())
+  key       String    @unique
+  value     Json
+  updatedBy BigInt?   @map("updated_by")
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  
+  @@map("system_settings")
+}
+
+// Analytics Events table
+model AnalyticsEvent {
+  id         String    @id @default(cuid())
+  userId     BigInt?   @map("user_id")
+  event      String
+  properties Json      @default("{}")
+  timestamp  DateTime  @default(now()) @db.Timestamptz
+  sessionId  String?   @map("session_id")
+  ipAddress  String?   @map("ip_address")
+  userAgent  String?   @map("user_agent")
+  
+  @@index([userId])
+  @@index([event])
+  @@index([timestamp])
+  @@map("analytics_events")
+}
