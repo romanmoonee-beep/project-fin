@@ -1,0 +1,6 @@
+{
+  "scripts": {
+    "dev:web": "pnpm --filter web-admin dev",
+    "build:web": "pnpm --filter web-admin build"
+  }
+}

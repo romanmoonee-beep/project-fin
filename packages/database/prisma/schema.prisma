@@ -138,6 +138,12 @@ model User {
   
   // Activities
   activities        UserActivity[]
+<<<<<<< HEAD
+=======
+  
+  // Admin Sessions
+  adminSessions     AdminSession[]
+>>>>>>> b118273 (2-commit)
 
   @@index([telegramId])
   @@index([referrerId])
@@ -403,4 +409,28 @@ model AnalyticsEvent {
   @@index([event])
   @@index([timestamp])
   @@map("analytics_events")
+<<<<<<< HEAD
 }
+=======
+}
+
+// Admin Sessions table
+model AdminSession {
+  id          String    @id @default(cuid())
+  userId      BigInt    @map("user_id")
+  token       String    @unique
+  ipAddress   String?   @map("ip_address")
+  userAgent   String?   @map("user_agent")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz
+  lastUsedAt  DateTime? @map("last_used_at") @db.Timestamptz
+  isActive    Boolean   @default(true) @map("is_active")
+  // Relations
+  user        User      @relation(fields: [userId], references: [telegramId])
+  
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+  @@map("admin_sessions")
+}
+>>>>>>> b118273 (2-commit)

@@ -80,7 +80,353 @@ export class TaskService {
       hasPrev: page > 1
     };
   }
+<<<<<<< HEAD
 
+=======
+  
+  async initialize() {
+    console.log('📋 TaskService initialized');
+    // Здесь можно добавить инициализацию, если нужно
+  }
+
+  async shutdown() {
+    console.log('📋 TaskService shutdown');
+    // Здесь можно добавить очистку ресурсов, если нужно
+  }
+
+
+  async getTaskCounts() {
+    const counts = await prisma.task.groupBy({
+      by: ['type'],
+      where: {
+        status: 'active',
+        OR: [
+          { expiresAt: null },
+          { expiresAt: { gt: new Date() } }
+        ]
+      },
+      _count: { type: true }
+    });
+
+    const result = {
+      total: 0,
+      subscribe: 0,
+      join_group: 0,
+      view_post: 0,
+      use_bot: 0,
+      react_post: 0,
+      premium_boost: 0
+    };
+
+    counts.forEach(count => {
+      result[count.type as keyof typeof result] = count._count.type;
+      result.total += count._count.type;
+    });
+
+    return result;
+  }
+
+  // Boost task (premium feature)
+  async boostTask(taskId: string, authorId: number, boostType: string, duration: number) {
+    const task = await prisma.task.findUnique({
+      where: { id: taskId }
+    });
+
+    if (!task) {
+      throw new Error('Задание не найдено');
+    }
+
+    if (task.authorId !== authorId) {
+      throw new Error('Нет прав на буст этого задания');
+    }
+
+    // Calculate boost cost
+    const boostCosts = {
+      'top_placement': 500,
+      'highlight': 300,
+      'premium_only': 200,
+      'fast_track': 150
+    };
+
+    const cost = boostCosts[boostType as keyof typeof boostCosts] || 500;
+
+    // Check balance
+    const canAfford = await balanceService.canAfford(authorId, cost);
+    if (!canAfford) {
+      throw new Error('Недостаточно средств для буста задания');
+    }
+
+    // Apply boost
+    const boostExpiresAt = new Date(Date.now() + duration * 60 * 60 * 1000); // hours to ms
+
+    const updatedTask = await prisma.task.update({
+      where: { id: taskId },
+      data: {
+        isBoosted: true,
+        boostExpiresAt,
+        boostConfig: {
+          type: boostType,
+          cost,
+          duration,
+          appliedAt: new Date().toISOString()
+        },
+        priority: boostType === 'top_placement' ? 100 : 10
+      }
+    });
+
+    // Charge for boost
+    await balanceService.updateBalance(
+      authorId,
+      -cost,
+      'spend',
+      `Буст задания: ${boostType}`,
+      { taskId, boostType, duration }
+    );
+
+    return updatedTask;
+  }
+
+  // Remove expired boosts (background job)
+  async removeExpiredBoosts() {
+    const expiredTasks = await prisma.task.findMany({
+      where: {
+        isBoosted: true,
+        boostExpiresAt: {
+          lt: new Date()
+        }
+      }
+    });
+
+    if (expiredTasks.length > 0) {
+      await prisma.task.updateMany({
+        where: {
+          id: { in: expiredTasks.map(t => t.id) }
+        },
+        data: {
+          isBoosted: false,
+          boostExpiresAt: null,
+          priority: 0,
+          boostConfig: {}
+        }
+      });
+
+      console.log(`Removed boost from ${expiredTasks.length} tasks`);
+    }
+
+    return expiredTasks.length;
+  }
+
+  // Get task for execution (with user context)
+  async getTaskForExecution(taskId: string, userId: number) {
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      include: {
+        author: {
+          select: {
+            telegramId: true,
+            username: true,
+            level: true
+          }
+        },
+        executions: {
+          where: { userId },
+          select: {
+            id: true,
+            status: true,
+            createdAt: true,
+            verifiedAt: true,
+            adminComment: true
+          }
+        }
+      }
+    });
+
+    if (!task) {
+      throw new Error('Задание не найдено');
+    }
+
+    if (task.status !== 'active') {
+      throw new Error('Задание неактивно');
+    }
+
+    if (task.expiresAt && task.expiresAt < new Date()) {
+      throw new Error('Срок выполнения задания истек');
+    }
+
+    if (task.completedCount >= task.targetCount) {
+      throw new Error('Задание уже полностью выполнено');
+    }
+
+    if (task.authorId === userId) {
+      throw new Error('Нельзя выполнять собственные задания');
+    }
+
+    // Check if user already executed this task
+    if (task.executions && task.executions.length > 0) {
+      const execution = task.executions[0];
+      if (execution.status === 'pending') {
+        throw new Error('Задание уже отправлено на проверку');
+      } else if (execution.status === 'approved') {
+        throw new Error('Задание уже выполнено');
+      }
+      // If rejected, user can try again
+    }
+
+    // Check user level requirement
+    const user = await prisma.user.findUnique({
+      where: { telegramId: userId }
+    });
+
+    if (!user) {
+      throw new Error('Пользователь не найден');
+    }
+
+    const levelOrder = ['bronze', 'silver', 'gold', 'premium'];
+    const userLevelIndex = levelOrder.indexOf(user.level);
+    const minLevelIndex = levelOrder.indexOf(task.minUserLevel);
+
+    if (userLevelIndex < minLevelIndex) {
+      throw new Error(`Требуется минимальный уровень: ${task.minUserLevel}`);
+    }
+
+    return task;
+  }
+
+  // Get user's execution history
+  async getUserExecutions(
+    userId: number,
+    page = 1,
+    limit = 20,
+    status?: string
+  ) {
+    const skip = (page - 1) * limit;
+
+    const where = {
+      userId,
+      ...(status && { status })
+    };
+
+    const [executions, total] = await Promise.all([
+      prisma.taskExecution.findMany({
+        where,
+        include: {
+          task: {
+            select: {
+              id: true,
+              title: true,
+              type: true,
+              reward: true,
+              author: {
+                select: {
+                  username: true
+                }
+              }
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit
+      }),
+      prisma.taskExecution.count({ where })
+    ]);
+
+    return {
+      executions,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasNext: page * limit < total,
+        hasPrev: page > 1
+      }
+    };
+  }
+
+  // Search tasks
+  async searchTasks(
+    query: string,
+    userId: number,
+    userLevel: string,
+    filters?: {
+      type?: string;
+      minReward?: number;
+      maxReward?: number;
+    },
+    page = 1,
+    limit = 20
+  ) {
+    const skip = (page - 1) * limit;
+
+    const where = {
+      status: 'active',
+      OR: [
+        { expiresAt: null },
+        { expiresAt: { gt: new Date() } }
+      ],
+      NOT: {
+        authorId: userId
+      },
+      executions: {
+        none: {
+          userId,
+          status: { in: ['approved', 'pending'] }
+        }
+      },
+      AND: [
+        {
+          OR: [
+            { title: { contains: query, mode: 'insensitive' } },
+            { description: { contains: query, mode: 'insensitive' } }
+          ]
+        }
+      ],
+      ...(filters?.type && { type: filters.type }),
+      ...(filters?.minReward && { reward: { gte: filters.minReward } }),
+      ...(filters?.maxReward && { reward: { lte: filters.maxReward } })
+    } as any;
+
+    const [tasks, total] = await Promise.all([
+      prisma.task.findMany({
+        where,
+        include: {
+          author: {
+            select: {
+              username: true,
+              level: true
+            }
+          }
+        },
+        orderBy: [
+          { isBoosted: 'desc' },
+          { priority: 'desc' },
+          { createdAt: 'desc' }
+        ],
+        skip,
+        take: limit
+      }),
+      prisma.task.count({ where })
+    ]);
+
+    return {
+      tasks: tasks.map(task => ({
+        ...task,
+        rewardWithMultiplier: applyMultiplier(task.reward.toNumber(), userLevel)
+      })),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasNext: page * limit < total,
+        hasPrev: page > 1
+      },
+      query,
+      filters
+    };
+  }
+>>>>>>> b118273 (2-commit)
   // Get task details
   async getTaskDetails(taskId: string, userId?: number) {
     const task = await prisma.task.findUnique({

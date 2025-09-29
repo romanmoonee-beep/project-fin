@@ -64,6 +64,13 @@ export const botConfigSchema = commonConfigSchema.extend({
   SUPPORT_CHAT_ID: z.number().optional(),
   LOGS_CHAT_ID: z.number().optional(),
   ANNOUNCEMENTS_CHAT_ID: z.number().optional(),
+<<<<<<< HEAD
+=======
+  // Web Admin Panel
+  WEB_ADMIN_URL: z.string().url().default('http://localhost:3001'),
+  ADMIN_JWT_SECRET: z.string().min(32).default('change-me-super-secret-jwt-key-for-admin-panel'),
+  ADMIN_JWT_EXPIRES: z.string().default('15m'),
+>>>>>>> b118273 (2-commit)
 });
 
 export type BotConfig = z.infer<typeof botConfigSchema>;
@@ -182,6 +189,14 @@ export const loadBotConfig = (): BotConfig => {
     ANNOUNCEMENTS_CHAT_ID: process.env.ANNOUNCEMENTS_CHAT_ID ? 
       parseInt(process.env.ANNOUNCEMENTS_CHAT_ID) : 
       undefined,
+<<<<<<< HEAD
+=======
+    // Web Admin Panel
+    WEB_ADMIN_URL: process.env.WEB_ADMIN_URL,
+    ADMIN_JWT_SECRET: process.env.ADMIN_JWT_SECRET,
+    ADMIN_JWT_EXPIRES: process.env.ADMIN_JWT_EXPIRES,
+ 
+>>>>>>> b118273 (2-commit)
   };
 
   return validateConfig(botConfigSchema, config);

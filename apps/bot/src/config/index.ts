@@ -90,6 +90,14 @@ export const BOT_CONSTANTS = {
   SUPPORT_CHAT_ID: config.SUPPORT_CHAT_ID,
   LOGS_CHAT_ID: config.LOGS_CHAT_ID,
   ANNOUNCEMENTS_CHAT_ID: config.ANNOUNCEMENTS_CHAT_ID,
+<<<<<<< HEAD
+=======
+  
+  // Web Admin Panel
+  WEB_ADMIN_URL: config.WEB_ADMIN_URL,
+  ADMIN_JWT_SECRET: config.ADMIN_JWT_SECRET,
+  ADMIN_JWT_EXPIRES: config.ADMIN_JWT_EXPIRES,
+>>>>>>> b118273 (2-commit)
 } as const;
 
 // Validation rules

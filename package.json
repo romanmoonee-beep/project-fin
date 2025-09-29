@@ -27,7 +27,14 @@
     "docker:dev": "docker-compose up -d",
     "docker:prod": "docker-compose -f docker-compose.prod.yml up -d",
     "docker:down": "docker-compose down",
+<<<<<<< HEAD
     "setup": "pnpm install && pnpm db:generate && pnpm db:push"
+=======
+    "setup": "pnpm install && pnpm db:generate && pnpm db:push",
+    "dev:api": "pnpm --filter @pr-gram/api dev",
+    "build:api": "pnpm --filter @pr-gram/api build",
+    "start:api": "pnpm --filter @pr-gram/api start"
+>>>>>>> b118273 (2-commit)
   },
   "devDependencies": {
     "@types/node": "^20.10.5",
